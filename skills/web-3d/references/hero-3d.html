@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hero 3D — plantilla Xapiensys</title>
+<!--
+  PLANTILLA NIVEL 1 — Hero 3D interactivo (Three.js + GLB de Higgsfield)
+  Qué hace:
+    - El texto (H1, CTA) es HTML real. El 3D vive en un canvas al lado.
+    - Muestra el poster (.webp) al instante; Three.js y el GLB se cargan después.
+    - El modelo gira según el scroll y se inclina siguiendo el mouse (o queda quieto con reduced-motion).
+    - Pausa el render cuando el hero sale de pantalla. Sin WebGL -> se queda el poster.
+  Qué cambiar:  CONFIG (rutas, rotación, cámara) + estilos según la dirección de taste-skill.
+-->
+<style>
+  :root { --bg:#0e0f12; --fg:#f2efe8; --accent:#d9ff4a; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--fg); font-family:system-ui, sans-serif; }
+  .hero { position:relative; min-height:100svh; display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:2rem; padding:6vw; overflow:hidden; }
+  .hero__copy h1 { font-size:clamp(2.4rem, 6vw, 5.5rem); line-height:.95; letter-spacing:-.03em; }
+  .hero__copy p { margin-top:1.25rem; max-width:34ch; opacity:.75; font-size:1.125rem; }
+  .hero__cta { display:inline-block; margin-top:2rem; padding:.9rem 1.4rem; background:var(--accent); color:#000; text-decoration:none; font-weight:600; border-radius:999px; }
+  .hero__stage { position:relative; aspect-ratio:1; width:100%; }
+  .hero__poster, .hero__stage canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  .hero__stage canvas { opacity:0; transition:opacity .6s ease; }
+  .hero__stage.is-ready canvas { opacity:1; }
+  .hero__stage.is-ready .hero__poster { opacity:0; transition:opacity .6s ease; }
+  .spacer { height:150vh; padding:6vw; opacity:.5; }
+  @media (max-width: 800px) {
+    .hero { grid-template-columns:1fr; padding-top:20vw; }
+    .hero__stage { order:-1; max-width:440px; margin-inline:auto; }
+  }
+</style>
+</head>
+<body>
+
+<section class="hero" id="hero">
+  <div class="hero__copy">
+    <h1>Titular del cliente</h1>
+    <p>Una línea de propuesta de valor. Este texto es HTML real: Google lo lee y carga al instante.</p>
+    <a class="hero__cta" href="#contacto">Hablemos</a>
+  </div>
+  <div class="hero__stage" id="stage" aria-hidden="true">
+    <img class="hero__poster" src="assets/3d/poster.webp" alt="" fetchpriority="high">
+  </div>
+</section>
+
+<section class="spacer">Siguiente sección…</section>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+const CONFIG = {
+  model: 'assets/3d/modelo.glb',
+  scrollTurns: 0.6,        // vueltas completas del modelo al hacer scroll a lo largo del hero
+  idleSpin: 0.15,          // giro lento constante (rad/s); 0 para desactivar
+  mouseTilt: 0.25,         // inclinación máx. siguiendo el mouse (rad)
+  fitScale: 1.6,           // tamaño del modelo dentro del encuadre
+  maxPixelRatio: 2,
+  devPlaceholder: true,    // si el GLB no existe, muestra una figura de prueba (pon false en producción)
+};
+
+const stage = document.getElementById('stage');
+const hero = document.getElementById('hero');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function hasWebGL() {
+  try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); }
+  catch { return false; }
+}
+
+// Carga diferida: Three.js se importa solo cuando el hero es visible y hay WebGL.
+if (hasWebGL()) {
+  const io = new IntersectionObserver((entries) => {
+    if (entries.some(e => e.isIntersecting)) { io.disconnect(); init(); }
+  }, { rootMargin: '200px' });
+  io.observe(stage);
+}
+
+async function init() {
+  const THREE = await import('three');
+  const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+  const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js');
+  const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js');
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, CONFIG.maxPixelRatio));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  stage.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
+  camera.position.set(0, 0, 5);
+
+  const key = new THREE.DirectionalLight(0xffffff, 1.2);
+  key.position.set(3, 4, 5);
+  scene.add(key);
+
+  const pivot = new THREE.Group();   // gira con scroll/mouse
+  scene.add(pivot);
+
+  let model;
+  try {
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    const gltf = await loader.loadAsync(CONFIG.model);
+    model = gltf.scene;
+  } catch (err) {
+    if (!CONFIG.devPlaceholder) { console.warn('No se pudo cargar el GLB, se queda el poster.', err); renderer.dispose(); return; }
+    console.warn('GLB no encontrado, usando figura de prueba:', CONFIG.model);
+    model = new THREE.Mesh(
+      new THREE.TorusKnotGeometry(0.8, 0.28, 220, 32),
+      new THREE.MeshStandardMaterial({ color: 0xd9ff4a, metalness: 0.6, roughness: 0.25 })
+    );
+  }
+
+  // Centrar y escalar cualquier modelo al encuadre.
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3()).length();
+  const center = box.getCenter(new THREE.Vector3());
+  model.position.sub(center);
+  model.scale.setScalar(CONFIG.fitScale * 2 / size);
+  pivot.add(model);
+
+  function resize() {
+    const { width, height } = stage.getBoundingClientRect();
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage);
+  resize();
+
+  // Entrada: progreso del scroll dentro del hero (0..1) y posición del mouse (-1..1)
+  let scrollP = 0, mx = 0, my = 0;
+  function onScroll() {
+    const r = hero.getBoundingClientRect();
+    scrollP = Math.min(1, Math.max(0, -r.top / Math.max(1, r.height)));
+  }
+  addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  if (!reduced) {
+    addEventListener('pointermove', (e) => {
+      mx = (e.clientX / innerWidth) * 2 - 1;
+      my = (e.clientY / innerHeight) * 2 - 1;
+    }, { passive: true });
+  }
+
+  // Render solo cuando el hero está en pantalla.
+  let visible = true;
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible) loop(); }).observe(stage);
+
+  const clock = new THREE.Clock();
+  let idle = 0, rafId = 0;
+  function loop() {
+    cancelAnimationFrame(rafId);
+    if (!visible) return;
+    rafId = requestAnimationFrame(loop);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    if (!reduced) {
+      idle += CONFIG.idleSpin * dt;
+      const targetY = idle + scrollP * Math.PI * 2 * CONFIG.scrollTurns + mx * CONFIG.mouseTilt;
+      const targetX = my * CONFIG.mouseTilt * 0.6;
+      pivot.rotation.y += (targetY - pivot.rotation.y) * 0.08;   // suavizado
+      pivot.rotation.x += (targetX - pivot.rotation.x) * 0.08;
+    }
+    renderer.render(scene, camera);
+  }
+  renderer.render(scene, camera);
+  stage.classList.add('is-ready');
+  loop();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+web-design-guidelines (github.com/vercel-labs/agent-skills)
+Licencia: MIT, según la sección "License" del README de ese repo (el repo no incluye archivo LICENSE).
+Copyright (c) Vercel, Inc.

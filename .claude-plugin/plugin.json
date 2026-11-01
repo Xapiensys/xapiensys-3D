@@ -1,0 +1,8 @@
+{
+  "name": "xapiensys-3d",
+  "version": "1.0.0",
+  "description": "Línea 3D de Xapiensys: webs con héroes 3D interactivos, video cinematográfico con scroll y mundos que se recorren con scroll. Incluye la skill directora web-3d, taste-skill, scroll-world, web-design-guidelines y el MCP de Higgsfield.",
+  "author": { "name": "Jefferson Infa Cuti", "email": "jeffersonwin2018@gmail.com" },
+  "license": "MIT",
+  "keywords": ["3d", "threejs", "higgsfield", "landing", "scroll", "xapiensys"]
+}

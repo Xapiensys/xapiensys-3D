@@ -1,0 +1,12 @@
+{
+  "name": "xapiensys",
+  "owner": { "name": "Jefferson Infa Cuti", "email": "jeffersonwin2018@gmail.com" },
+  "plugins": [
+    {
+      "name": "xapiensys-3d",
+      "source": "./",
+      "description": "Línea 3D de Xapiensys: héroes 3D, video cinematográfico con scroll y mundos con scroll, con Higgsfield.",
+      "version": "1.0.0"
+    }
+  ]
+}

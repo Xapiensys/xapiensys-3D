@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hero cinematográfico con scroll — plantilla Xapiensys</title>
+<!--
+  PLANTILLA NIVEL 2 — Video que avanza/retrocede con el scroll (sin librerías)
+  Requisitos del video (ver SKILL.md, Paso 6): H.264, sin audio, -g 1 (keyframe en cada frame),
+  +faststart. Versión móvil 720p con sufijo -m.mp4. Poster .webp del primer frame.
+  Qué cambiar: CONFIG + estilos + textos de los pasos (data-at = momento del video, 0..1).
+-->
+<style>
+  :root { --bg:#08090b; --fg:#f4f1ea; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--fg); font-family:system-ui, sans-serif; }
+  .scrub { position:relative; height:400vh; }            /* más alto = el video avanza más lento */
+  .scrub__sticky { position:sticky; top:0; height:100svh; overflow:hidden; }
+  .scrub__media, .scrub__poster { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .scrub__shade { position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,.55), transparent 55%); }
+  .scrub__copy { position:absolute; left:6vw; right:6vw; bottom:10svh; }
+  .step { position:absolute; bottom:0; max-width:40ch; opacity:0; transform:translateY(16px); transition:opacity .5s, transform .5s; }
+  .step.is-on { opacity:1; transform:none; }
+  .step h1, .step h2 { font-size:clamp(2.2rem, 5.5vw, 5rem); line-height:.95; letter-spacing:-.03em; }
+  .step p { margin-top:1rem; opacity:.8; font-size:1.1rem; }
+  .after { min-height:100vh; padding:6vw; }
+  @media (prefers-reduced-motion: reduce) { .step { transition:none; } }
+</style>
+</head>
+<body>
+
+<section class="scrub" id="scrub">
+  <div class="scrub__sticky">
+    <img class="scrub__poster" src="assets/video/poster.webp" alt="" fetchpriority="high">
+    <video class="scrub__media" id="vid" muted playsinline preload="auto" aria-hidden="true"></video>
+    <div class="scrub__shade"></div>
+    <div class="scrub__copy">
+      <div class="step" data-at="0"><h1>Titular del cliente</h1><p>Propuesta de valor en HTML real.</p></div>
+      <div class="step" data-at="0.4"><h2>Segundo mensaje</h2><p>Aparece cuando el video va por el 40%.</p></div>
+      <div class="step" data-at="0.75"><h2>Llamado a la acción</h2><p><a href="#contacto" style="color:inherit">Cotiza tu proyecto →</a></p></div>
+    </div>
+  </div>
+</section>
+
+<section class="after">Siguiente sección…</section>
+
+<script>
+(() => {
+  const CONFIG = {
+    desktop: 'assets/video/hero.mp4',
+    mobile:  'assets/video/hero-m.mp4',
+    mobileQuery: '(max-width: 800px)',
+    ease: 0.12,           // suavizado del seek (0..1; más alto = más directo)
+  };
+  const section = document.getElementById('scrub');
+  const video = document.getElementById('vid');
+  const steps = [...section.querySelectorAll('.step')].map(el => ({ el, at: parseFloat(el.dataset.at) }));
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function progress() {
+    const r = section.getBoundingClientRect();
+    const total = r.height - innerHeight;
+    return Math.min(1, Math.max(0, -r.top / Math.max(1, total)));
+  }
+
+  function updateSteps(p) {
+    let active = steps[0];
+    for (const s of steps) if (p >= s.at) active = s;
+    for (const s of steps) s.el.classList.toggle('is-on', s === active);
+  }
+
+  updateSteps(progress());
+  addEventListener('scroll', () => updateSteps(progress()), { passive: true });
+
+  if (reduced) return;   // con reduced-motion se queda el poster + textos
+
+  video.src = matchMedia(CONFIG.mobileQuery).matches ? CONFIG.mobile : CONFIG.desktop;
+
+  // iOS no decodifica frames hasta que el video "se reproduce" una vez.
+  video.addEventListener('loadedmetadata', () => {
+    const p = video.play();
+    if (p && p.then) p.then(() => video.pause()).catch(() => {});
+    let shown = 0, seeking = false;
+    video.addEventListener('seeked', () => { seeking = false; });
+    function tick() {
+      requestAnimationFrame(tick);
+      const target = progress() * (video.duration - 0.05);
+      shown += (target - shown) * CONFIG.ease;
+      // Un seek a la vez: evita que el celular se atore con seeks en cola.
+      if (!seeking && Math.abs(video.currentTime - shown) > 0.01) {
+        seeking = true;
+        video.currentTime = shown;
+      }
+    }
+    const poster = section.querySelector('.scrub__poster');
+    video.addEventListener('seeked', () => { poster.style.opacity = 0; }, { once: true });
+    tick();
+  }, { once: true });
+})();
+</script>
+</body>
+</html>
